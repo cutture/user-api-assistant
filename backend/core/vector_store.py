@@ -1,7 +1,6 @@
 import chromadb
 from chromadb.config import Settings
 import os
-from functools import lru_cache
 from utils.timing import measure_time
 from dotenv import load_dotenv
 
@@ -45,23 +44,42 @@ class VectorStore:
         print(f"✅ Added {len(documents)} documents to ChromaDB.")
 
     @measure_time
-    @lru_cache(maxsize=100)
-    def query(self, query_text: str, n_results: int = 3):
+    def query(self, query_text: str, n_results: int = 3, where: dict = None, where_document: dict = None):
         """
         Queries the vector store for relevant documents.
-        Cached with LRU to speed up repeated queries for same context.
+        Supports metadata filtering via 'where'.
+        NOTE: LRU Cache removed to support dict arguments (unhashable).
         """
         collection = self._get_collection()
-        print(f"🔍 Querying Vector DB: '{query_text}'")
+        print(f"🔍 Querying Vector DB: '{query_text}' | Filters: {where}")
         try:
             results = collection.query(
                 query_texts=[query_text],
-                n_results=n_results
+                n_results=n_results,
+                where=where,
+                where_document=where_document
             )
             return results
         except Exception as e:
             print(f"⚠️ Vector Store Query Error: {e}")
             return None
+
+    def get_all_documents(self):
+        """
+        Retrieves all documents and their IDs.
+        Used for syncing BM25 index.
+        """
+        try:
+            collection = self._get_collection()
+            # ChromaDB get() returns all if limit is not set? 
+            # Default limit might be small. Set large limit or loop?
+            # For now, fetching first 10k is reasonable for this scale.
+            all_docs = collection.get(limit=10000, include=["documents", "metadatas"])
+            return all_docs
+        except Exception as e:
+            print(f"⚠️ Failed to fetch all documents: {e}")
+            return {"ids": [], "documents": [], "metadatas": []}
+
         
     def reset(self):
         """Clears the entire Vector Store."""

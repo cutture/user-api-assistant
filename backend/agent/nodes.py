@@ -1,6 +1,6 @@
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
-from core.vector_store import store as vector_store
+# from core.vector_store import store as vector_store # Replaced by Hybrid
 from core.llm_client import LLMFactory
 from agent.state import AgentState
 from core.resilience import with_resilience
@@ -27,6 +27,9 @@ web_search = DuckDuckGoSearchRun() # Web Search Tool
 reasoning_llm = LLMFactory.create_llm("reasoning")
 coding_llm = LLMFactory.create_llm("coding")
 chat_llm = LLMFactory.create_llm("chat")
+
+from core.hybrid import hybrid_retriever
+
 
 import re
 import requests
@@ -56,13 +59,13 @@ def retrieve_node(state: AgentState) -> Dict[str, Any]:
                 print(f"   ⚠️ Skipping Search Engine URL: {url}")
                 continue
 
+            scraped_content = ""
             try:
                 print(f"   Downloading: {url}")
                 # 2. Robust Scraper (Impersonate Googlebot for better SPA access)
                 headers = {"User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"}
                 resp = requests.get(url, timeout=15, headers=headers)
                 
-                scraped_content = ""
                 if resp.status_code == 200:
                     soup = BeautifulSoup(resp.content, 'html.parser')
                     # Remove noise
@@ -71,52 +74,57 @@ def retrieve_node(state: AgentState) -> Dict[str, Any]:
                     
                     text = soup.get_text(separator=' ')
                     # Collapse whitespace
-                    scraped_content = " ".join(text.split())
+                    raw_text = " ".join(text.split())
                     
                     # Stricter check for SPA/Blocked content
-                    is_too_short = len(scraped_content) < 1000
-                    has_js_warning = "enable javascript" in scraped_content.lower() or "javascript is required" in scraped_content.lower()
+                    is_too_short = len(raw_text) < 1000
+                    has_js_warning = "enable javascript" in raw_text.lower() or "javascript is required" in raw_text.lower()
                     
                     if not is_too_short and not has_js_warning:
-                         new_documents.append(f"Source URL: {url}\nContent:\n{scraped_content[:15000]}") # Increased limit
+                         scraped_content = raw_text[:15000] # Increased limit
+                         new_documents.append(f"Source URL: {url}\nContent:\n{scraped_content}")
                          print(f"   ✅ Scrape Success ({len(scraped_content)} chars)")
                     else:
-                        print(f"   ⚠️ Content unusable ({len(scraped_content)} chars, JS warning={has_js_warning}). Triggering fallback.")
+                        print(f"   ⚠️ Content unusable ({len(raw_text)} chars, JS warning={has_js_warning}). Triggering fallback.")
                         scraped_content = "" # Force fallback
                 else:
                     print(f"   ❌ Scrape Failed (Status {resp.status_code})")
 
-                # 3. Fallback: Smart Search if Scrape Failed
-                if not scraped_content:
-                    print(f"   🔄 Triggering Fallback Search for URL: {url}")
-                    
-                    # Extract keywords from URL path
-                    clean_url = url.split('?')[0] # Remove query params
-                    last_segment = clean_url.rstrip('/').split('/')[-1]
-                    
-                    # If last segment is generic (index.html), take parent
-                    if len(last_segment) < 5 or "index" in last_segment.lower():
-                        last_segment = clean_url.rstrip('/').split('/')[-2]
-                        
-                    keywords = re.sub(r'[-_.]', ' ', last_segment)
-                    # MORE TECHNICAL SEARCH QUERY
-                    search_query = f"{keywords} API endpoints code example"
-                    
-                    print(f"   🕵️ Fallback Query: '{search_query}'")
-                    
-                    try:
-                        search_res = web_search.invoke(search_query)
-                        new_documents.append(f"Fallback Search Result for {url}:\nQuery: {search_query}\nResult: {search_res}")
-                        print("   ✅ Fallback Search Success")
-                    except Exception as e:
-                        print(f"   ❌ Fallback Search Failed: {e}")
-
             except Exception as e:
                 print(f"   ❌ Scrape Exception: {e}")
-                new_documents.append(f"Source URL: {url}\nError: {str(e)}")
+                # Don't add error to docs immediately if we plan to fallback?
+                # new_documents.append(f"Source URL: {url}\nError: {str(e)}") 
+                # Better to try fallback first.
 
-    # B. Query Vector DB
-    results = vector_store.query(last_message, n_results=3)
+            # 3. Fallback: Smart Search if Scrape Failed (runs even if Exception occurred)
+            if not scraped_content:
+                print(f"   🔄 Triggering Fallback Search for URL: {url}")
+                
+                # Extract keywords from URL path
+                clean_url = url.split('?')[0] # Remove query params
+                last_segment = clean_url.rstrip('/').split('/')[-1]
+                
+                # If last segment is generic (index.html), take parent
+                if len(last_segment) < 5 or "index" in last_segment.lower():
+                    last_segment = clean_url.rstrip('/').split('/')[-2]
+                    
+                keywords = re.sub(r'[-_.]', ' ', last_segment)
+                # MORE TECHNICAL SEARCH QUERY
+                search_query = f"{keywords} API endpoints code example"
+                
+                print(f"   🕵️ Fallback Query: '{search_query}'")
+                
+                try:
+                    search_res = web_search.invoke(search_query)
+                    new_documents.append(f"Fallback Search Result for {url}:\nQuery: {search_query}\nResult: {search_res}")
+                    print("   ✅ Fallback Search Success")
+                except Exception as e:
+                    print(f"   ❌ Fallback Search Failed: {e}")
+                    # If both failed, then log the error
+                    new_documents.append(f"Source URL: {url}\nError: Scrape and Fallback failed.")
+
+    # B. Query Hybrid Search (Vector + BM25)
+    results = hybrid_retriever.search(last_message, n_results=3)
     if results and results['documents']:
         for doc_list in results['documents']:
             new_documents.extend(doc_list)

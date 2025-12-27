@@ -2,6 +2,10 @@
 import sys
 import os
 import pytest
+from dotenv import load_dotenv
+
+# Load env vars for all tests
+load_dotenv()
 
 # Add backend directory to path
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend"))

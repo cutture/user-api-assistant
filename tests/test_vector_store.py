@@ -45,5 +45,6 @@ def test_query_documents(store):
         assert res1 == {"documents": [["result"]]}
         assert res2 == {"documents": [["result"]]}
         
-        # Check that query was called only ONCE (due to cache)
-        mock_coll.query.assert_called_once()
+        # Cache removed in Phase 12 to support dict filters.
+        # Expect 2 calls.
+        assert mock_coll.query.call_count == 2

@@ -4,6 +4,9 @@ import uvicorn
 import os
 from dotenv import load_dotenv
 
+# Load Env Vars FIRST
+load_dotenv()
+
 # Security & Rate Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -11,14 +14,10 @@ from slowapi.errors import RateLimitExceeded
 from core.security import configure_security
 from utils.sanitization import sanitize_html
 
-# Import the Graph
+# Import the Graph (Now safe to import as env is loaded)
 from agent.graph import app_graph
 from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage
-
-# ... imports from before ...
-
-load_dotenv()
 
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -34,7 +33,12 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Apply Security Config (CORS, Headers)
+# Apply Security Config (CORS, Headers)
 configure_security(app)
+
+# Register Advanced API Router
+from api.endpoints import router as api_router
+app.include_router(api_router)
 
 class ChatRequest(BaseModel):
     query: str
@@ -181,35 +185,51 @@ async def upload_document(file: UploadFile = File(...)):
         if not content_text.strip():
             raise HTTPException(status_code=400, detail="Empty file content.")
 
-        # 3. Process Content based on Type
+        # 3. Process Content using Parsers
+        from core.parsers.factory import parser_factory
+        from core.text_splitter import APIDocSplitter # Fallback
+        
+        # Determine content type for Parser Factory
+        # We try to trust content-type, but fallback to extension if generic
+        mime_type = file.content_type
+        if mime_type == "application/octet-stream" or mime_type == "text/plain":
+            if file.filename.endswith(".graphql") or file.filename.endswith(".gql"):
+                mime_type = "application/graphql"
+            elif file.filename.endswith(".json"):
+                mime_type = "application/json"
+        
+        parser = parser_factory.get_parser(mime_type)
+        
         documents_to_add = []
         metadatas_to_add = []
         
-        # Special Handling for OpenAPI/Swagger JSON
-        is_openapi = False
-        if file.content_type == "application/json":
-            try:
-                import json
-                json_data = json.loads(content_text) # Use content_text from below
-                if "openapi" in json_data or "swagger" in json_data:
-                    is_openapi = True
-                    print("🚀 Detected OpenAPI Spec. Using Smart Splitter.")
-                    raw_chunks = text_splitter.split_json_spec(json_data)
-                    documents_to_add = raw_chunks
-                    metadatas_to_add = [{"source": file.filename, "type": "openapi_endpoint"} for _ in raw_chunks]
-            except Exception as e:
-                print(f"JSON Parse Error: {e}")
-
-        # Standard Handling (PDF, Docx, Plain JSON, Text)
-        if not is_openapi:
-             from langchain_core.documents import Document
-             input_doc = Document(page_content=content_text, metadata={"source": file.filename})
-             chunks = text_splitter.base_splitter.split_documents([input_doc])
-             documents_to_add = [chunk.page_content for chunk in chunks]
-             metadatas_to_add = [chunk.metadata for chunk in chunks]
+        if parser:
+            print(f"🚀 Using Advanced Parser: {parser.__class__.__name__}")
+            # Identify if content is json-like or text
+            parse_input = content_text
+            if mime_type == "application/json" or "json" in mime_type:
+                 try:
+                     import json
+                     parse_input = json.loads(content_text)
+                 except:
+                     pass # Pass as string
+            
+            chunks = parser.parse(parse_input)
+            documents_to_add = chunks
+            metadatas_to_add = [{"source": file.filename, "type": parser.__class__.__name__} for _ in chunks]
+            
+        else:
+            # Fallback to existing TextSplitter logic (PDF, Word, generic text)
+            print("ℹ️ Using Standard Text Splitter")
+            from langchain_core.documents import Document
+            input_doc = Document(page_content=content_text, metadata={"source": file.filename})
+            chunks = text_splitter.base_splitter.split_documents([input_doc])
+            documents_to_add = [chunk.page_content for chunk in chunks]
+            metadatas_to_add = [chunk.metadata for chunk in chunks]
 
         # 4. Add to Vector Store
         if documents_to_add:
+            print(f"✅ Generated {len(documents_to_add)} chunks.")
             ids = [str(uuid.uuid4()) for _ in documents_to_add]
             vector_store.add_documents(documents=documents_to_add, metadatas=metadatas_to_add, ids=ids)
 
