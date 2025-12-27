@@ -1,0 +1,26 @@
+# GIT
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+tests/
+
+# Node
+node_modules/
+npm-debug.log
+frontend/.next/
+frontend/node_modules/
+
+# Env (Explicitly passed via compose, don't bake in)
+.env
+.env.local
+
+# Data
+chroma_db/
+brain/

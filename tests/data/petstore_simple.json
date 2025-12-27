@@ -1,0 +1,97 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Sample Pet Store API",
+        "description": "A sample API for testing the API Integration Assistant.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "https://api.petstore.example.com/v1",
+            "description": "Production server"
+        }
+    ],
+    "paths": {
+        "/pets": {
+            "post": {
+                "operationId": "createPet",
+                "summary": "Create a new pet",
+                "description": "Add a new pet to the store inventory. Requires authentication.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PetInput"
+                            },
+                            "example": {
+                                "name": "Buddy",
+                                "species": "dog",
+                                "breed": "Golden Retriever",
+                                "age": 3,
+                                "status": "available"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Pet created successfully"
+                    }
+                },
+                "security": [
+                    {
+                        "bearer_auth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "PetInput": {
+                "type": "object",
+                "required": [
+                    "name",
+                    "species"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "species": {
+                        "type": "string",
+                        "enum": [
+                            "dog",
+                            "cat",
+                            "bird",
+                            "fish",
+                            "other"
+                        ]
+                    },
+                    "breed": {
+                        "type": "string"
+                    },
+                    "age": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "available",
+                            "pending",
+                            "sold"
+                        ]
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "bearer_auth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    }
+}

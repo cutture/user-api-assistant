@@ -1,0 +1,28 @@
+[project]
+name = "api-assistant-antigravity"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "chainlit>=2.9.4",
+    "chromadb>=1.4.0",
+    "duckduckgo-search<7",
+    "fastapi>=0.127.0",
+    "kaggle>=1.8.3",
+    "langchain>=1.2.0",
+    "langchain-community>=0.4.1",
+    "langchain-core>=1.2.5",
+    "langchain-groq>=1.1.1",
+    "langchain-text-splitters>=1.1.0",
+    "langgraph>=1.0.5",
+    "pypdf>=6.5.0",
+    "pytest>=9.0.2",
+    "python-docx>=1.2.0",
+    "python-dotenv>=1.2.1",
+    "python-multipart>=0.0.21",
+    "requests>=2.32.5",
+    "tenacity>=9.1.2",
+    "uvicorn>=0.40.0",
+]

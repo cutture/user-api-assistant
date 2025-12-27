@@ -1,0 +1,226 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
+import os
+from dotenv import load_dotenv
+
+# Import the Graph
+from agent.graph import app_graph
+from typing import List, Dict, Any
+from langchain_core.messages import HumanMessage, AIMessage
+
+# ...
+
+# ... imports
+
+load_dotenv()
+
+app = FastAPI(
+    title="Enterprise API Assistant",
+    description="Agentic RAG for API Integration",
+    version="1.0.0"
+)
+
+# CORS (Allow Frontend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class ChatRequest(BaseModel):
+    query: str
+    history: List[Dict[str, str]] = []
+
+from core.exceptions import AppError, ServiceUnavailableError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(AppError)
+async def app_exception_handler(request, exc: AppError):
+    status_code = 500
+    if isinstance(exc, ServiceUnavailableError):
+        status_code = 503
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": exc.message, "details": exc.details, "type": exc.__class__.__name__},
+    )
+
+@app.get("/health")
+async def health_check():
+    # Perform deep check
+    try:
+        # Check Vector Store
+        vector_store.client.heartbeat()
+        return {"status": "ok", "service": "api-assistant-backend", "dependencies": {"chromadb": "ok"}}
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"status": "degraded", "error": str(e)})
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    """
+    Invokes the Agentic Mesh (RAG -> Plan -> Code).
+    """
+    try:
+        # Reconstruct Chat History
+        messages = []
+        for msg in request.history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                messages.append(AIMessage(content=msg["content"]))
+        
+        # Add current query
+        messages.append(HumanMessage(content=request.query))
+
+        inputs = {
+            "messages": messages,
+            "intent": "general",
+            "context": [],
+            "plan": "",
+            "generated_code": "",
+            "error": ""
+        }
+        
+        # Invoke LangGraph
+        result = app_graph.invoke(inputs)
+        
+        # Handle Reponse Logic
+        response_content = result["generated_code"]
+        plan_content = result["plan"]
+        
+        # If the agent stopped at Planning (due to missing info), show the plan/question as the main response
+        if not response_content and "STATUS: INCOMPLETE" in plan_content:
+            response_content = f"🛑 **Clarification Needed**\n\n{plan_content}"
+        elif not response_content:
+            response_content = "No code generated. Please check the Plan."
+
+        return {
+            "response": response_content,
+            "plan": plan_content,
+            "context": result["context"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PostmanRequest(BaseModel):
+    plan: str
+    code: str
+
+@app.post("/export/postman")
+async def export_postman(request: PostmanRequest):
+    from utils.postman import convert_to_postman_collection
+    try:
+        return convert_to_postman_collection(request.plan, request.code)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Document Upload Logic ---
+from fastapi import UploadFile, File
+import io
+import pypdf
+import uuid
+from core.vector_store import store as vector_store
+from core.text_splitter import APIDocSplitter
+
+# Initialize services
+# vector_store is imported as singleton
+text_splitter = APIDocSplitter()
+
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    """
+    Uploads a PDF or Text file, chunks it, and adds it to the Vector Store.
+    """
+    try:
+        content_text = ""
+        
+        # 1. Extract Text
+        if file.content_type == "application/pdf":
+            pdf_bytes = await file.read()
+            pdf_reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+            for page in pdf_reader.pages:
+                text = page.extract_text()
+                if text:
+                    content_text += text + "\n"
+        
+        elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            import docx
+            doc_bytes = await file.read()
+            doc = docx.Document(io.BytesIO(doc_bytes))
+            for para in doc.paragraphs:
+                content_text += para.text + "\n"
+
+        elif file.content_type == "application/json":
+            content_bytes = await file.read()
+            raw_text = content_bytes.decode("utf-8")
+            # Create a nice string representation of the JSON for fallback
+            import json
+            json_data = json.loads(raw_text)
+            content_text = json.dumps(json_data, indent=2)
+
+        elif file.content_type in ["text/plain", "text/markdown", "text/csv"]:
+            content_bytes = await file.read()
+            content_text = content_bytes.decode("utf-8")
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Use PDF, DOCX, JSON, or Text.")
+
+        if not content_text.strip():
+            raise HTTPException(status_code=400, detail="Empty file content.")
+
+        # 3. Process Content based on Type
+        documents_to_add = []
+        metadatas_to_add = []
+        
+        # Special Handling for OpenAPI/Swagger JSON
+        is_openapi = False
+        if file.content_type == "application/json":
+            try:
+                import json
+                json_data = json.loads(content_text) # Use content_text from below
+                if "openapi" in json_data or "swagger" in json_data:
+                    is_openapi = True
+                    print("🚀 Detected OpenAPI Spec. Using Smart Splitter.")
+                    raw_chunks = text_splitter.split_json_spec(json_data)
+                    documents_to_add = raw_chunks
+                    metadatas_to_add = [{"source": file.filename, "type": "openapi_endpoint"} for _ in raw_chunks]
+            except Exception as e:
+                print(f"JSON Parse Error: {e}")
+
+        # Standard Handling (PDF, Docx, Plain JSON, Text)
+        if not is_openapi:
+             from langchain_core.documents import Document
+             input_doc = Document(page_content=content_text, metadata={"source": file.filename})
+             chunks = text_splitter.base_splitter.split_documents([input_doc])
+             documents_to_add = [chunk.page_content for chunk in chunks]
+             metadatas_to_add = [chunk.metadata for chunk in chunks]
+
+        # 4. Add to Vector Store
+        if documents_to_add:
+            ids = [str(uuid.uuid4()) for _ in documents_to_add]
+            vector_store.add_documents(documents=documents_to_add, metadatas=metadatas_to_add, ids=ids)
+
+        return {
+            "status": "success", 
+            "filename": file.filename, 
+            "chunks_added": len(documents_to_add),
+            "total_chars": len(content_text)
+        }
+
+    except Exception as e:
+        print(f"Upload Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/reset")
+async def reset_db():
+    try:
+        vector_store.reset()
+        return {"status": "success", "message": "Vector Store cleared."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
