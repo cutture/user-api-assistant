@@ -1,20 +1,27 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import uvicorn
 import os
 from dotenv import load_dotenv
+
+# Security & Rate Limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from core.security import configure_security
+from utils.sanitization import sanitize_html
 
 # Import the Graph
 from agent.graph import app_graph
 from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage
 
-# ...
-
-# ... imports
+# ... imports from before ...
 
 load_dotenv()
+
+# Initialize Limiter
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="Enterprise API Assistant",
@@ -22,14 +29,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS (Allow Frontend)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Apply Rate Limit Exception Handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Apply Security Config (CORS, Headers)
+configure_security(app)
 
 class ChatRequest(BaseModel):
     query: str
@@ -49,7 +54,8 @@ async def app_exception_handler(request, exc: AppError):
     )
 
 @app.get("/health")
-async def health_check():
+@limiter.limit("5/minute") # Strict limit on health check to prevent spam
+async def health_check(request: Request):
     # Perform deep check
     try:
         # Check Vector Store
@@ -59,21 +65,25 @@ async def health_check():
         return JSONResponse(status_code=503, content={"status": "degraded", "error": str(e)})
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+@limiter.limit("20/minute") # Initial limit for chat
+async def chat(request: Request, body: ChatRequest): # Note: Body parameter must be explicit if Request is used
     """
     Invokes the Agentic Mesh (RAG -> Plan -> Code).
     """
     try:
+        # Sanitization
+        sanitized_query = sanitize_html(body.query)
+        
         # Reconstruct Chat History
         messages = []
-        for msg in request.history:
+        for msg in body.history:
             if msg["role"] == "user":
-                messages.append(HumanMessage(content=msg["content"]))
+                messages.append(HumanMessage(content=sanitize_html(msg["content"])))
             elif msg["role"] == "assistant":
-                messages.append(AIMessage(content=msg["content"]))
+                messages.append(AIMessage(content=sanitize_html(msg["content"])))
         
         # Add current query
-        messages.append(HumanMessage(content=request.query))
+        messages.append(HumanMessage(content=sanitized_query))
 
         inputs = {
             "messages": messages,
@@ -91,11 +101,11 @@ async def chat(request: ChatRequest):
         response_content = result["generated_code"]
         plan_content = result["plan"]
         
-        # If the agent stopped at Planning (due to missing info), show the plan/question as the main response
+        # ... logic continues ...
         if not response_content and "STATUS: INCOMPLETE" in plan_content:
-            response_content = f"🛑 **Clarification Needed**\n\n{plan_content}"
+             response_content = f"🛑 **Clarification Needed**\n\n{plan_content}"
         elif not response_content:
-            response_content = "No code generated. Please check the Plan."
+             response_content = "No code generated. Please check the Plan."
 
         return {
             "response": response_content,

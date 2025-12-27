@@ -75,6 +75,24 @@ uv run main.py
 cd frontend
 npm run dev
 ```
+
+## 🌍 Deployment & Operations
+We provide comprehensive guides and tooling for going to production:
+
+- **[Deployment Guide](DEPLOYMENT.md)**: Detailed steps for Local, QA, and Cloud.
+- **[Production Checklist](PRODUCTION_CHECKLIST.md)**: Verify readiness (Security, Ops, Perf) before launch.
+- **[Monitoring Guide](MONITORING.md)**: Setup logs, metrics, and health checks.
+
+### Quick Start Scripts
+**Linux/Mac**:
+```bash
+./scripts/deploy.sh prod
+```
+
+**Windows**:
+```powershell
+.\scripts\deploy.ps1 -Env prod
+```
 Visit `http://localhost:3000` to chat.
 
 ---
