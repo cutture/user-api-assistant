@@ -1,135 +1,103 @@
+
 # 🚀 Enterprise API Integration Assistant
 
-An **Agentic AI System** designed to help enterprise developers integrate complex APIs. It goes beyond simple code generation by acting as a **Software Architect**, **Researcher**, and **Coder** in one loop.
+An **Agentic AI System** designed to act as a **Software Architect**, **Researcher**, and **Coder** for complex API integration tasks.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Next.js](https://img.shields.io/badge/next.js-14-black)
+![Status](https://img.shields.io/badge/status-v1.0.0-green)
 
-## ✨ Key Features
+## ✨ Logic & Features
 
 ### 🧠 Core Intelligence
-*   **Multi-Agent Architecture**: Powered by **LangGraph**, separating concerns into Retrieval, Planning, Coding, and Validation agents.
-*   **Hybrid Retrieval (RAG)**: Combines **ChromaDB** (local vector store) with **DuckDuckGo** (web search) and **URL Scraping**.
-*   **Proactive Gap Analysis**: If requirements are vague, the agent asks clarifying questions instead of guessing.
+*   **Multi-Agent Mesh**: Powered by **LangGraph**, orchestrating Retrieval, Planning, Coding, and Review agents.
+*   **Hybrid Retrieval (RAG)**: Precision search using **ChromaDB** (Vector) + **BM25** (Keyword) + **RRF** (Reciprocal Rank Fusion) + **MMR** (Maximal Marginal Relevance) for diversity.
+*   **Self-Healing**: Agents detect errors, critique their own code, and retry automatically.
 
 ### 🏢 Enterprise Capabilities
-*   **Self-Correction Loop**: Validates generated code using an LLM critic, automatically fixing errors before showing the result.
-*   **Architecture Visualization**: Generates **Mermaid.js** sequence diagrams to visualize the integration flow.
-*   **Interactive Playground**: Auto-generates a mini React app (`APITester.tsx`) to test the API endpoints immediately.
-*   **SDK Mode**: Generates full production-grade Client Libraries (Classes + Pydantic Models) when requested.
+*   **Multi-Format Parsing**: Ingests **OpenAPI (Swagger)**, **GraphQL Schemas**, **Postman Collections**, and PDF/Docx documentation.
+*   **Architecture Visualization**: Auto-generates **Mermaid.js** diagrams (Sequence, ERD, Auth Flows) to explain the system.
+*   **Session Management**: Stateful, multi-user conversations with context retention across sessions.
+*   **Advanced CLI**: robust command-line interface for managing the knowledge base, debugging parsers, and running batch ingestions.
 
 ### 🛠️ Tech Stack
-*   **Backend**: Python, FastAPI, LangGraph, LangChain, ChromaDB.
-*   **Frontend**: Next.js 14, TailwindCSS, Shadcn UI, Mermaid.js.
-*   **LLM Providers**: Groq (Llama 3, Qwen 2.5), Ollama (Local Fallback).
-*   **DevOps**: Docker, GitHub Actions (CI/CD).
+*   **Backend**: Python 3.12, FastAPI, LangGraph, ChromaDB, Typer.
+*   **Frontend**: Next.js 14, TailwindCSS, Mermaid.js, Lucide Icons.
+*   **LLM Support**: Groq (Llama 3, Qwen 2.5), Ollama (Local), OpenAI compatible.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-*   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
+*   [uv](https://github.com/astral-sh/uv) (Python Manager)
 *   Node.js 20+
 *   Git
 
-### 1. Clone & Setup
+### 1. Installation
 ```bash
-git clone https://github.com/your-username/api-assistant.git
+git clone https://github.com/your-org/api-assistant.git
 cd api-assistant
-
-# Install Backend Dependencies
 uv sync
-
-# Install Frontend Dependencies
-cd frontend
-npm install
+cd frontend && npm install
 ```
 
-### 2. Environment Configuration
-Create a `.env` file in the root directory:
+### 2. Configuration
 ```bash
 cp .env.example .env
-```
-Fill in your keys:
-```env
-GROQ_API_KEY=gsk_...
-LLM_PROVIDER=groq
-CHROMA_PATH=./chroma_db
+# Edit .env with your API Keys (GROQ_API_KEY, etc.)
 ```
 
-### 3. Run Locally (Development)
-You need two terminals:
-
-**Backend:**
+### 3. Run Application
+**Backend**:
 ```bash
-# In project root
-uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-# OR simply
 uv run main.py
 ```
-
-**Frontend:**
+**Frontend**:
 ```bash
 cd frontend
 npm run dev
-```
-
-## 🌍 Deployment & Operations
-We provide comprehensive guides and tooling for going to production:
-
-- **[Deployment Guide](DEPLOYMENT.md)**: Detailed steps for Local, QA, and Cloud.
-- **[Production Checklist](PRODUCTION_CHECKLIST.md)**: Verify readiness (Security, Ops, Perf) before launch.
-- **[Monitoring Guide](MONITORING.md)**: Setup logs, metrics, and health checks.
-
-### Quick Start Scripts
-**Linux/Mac**:
-```bash
-./scripts/deploy.sh prod
-```
-
-**Windows**:
-```powershell
-.\scripts\deploy.ps1 -Env prod
 ```
 Visit `http://localhost:3000` to chat.
 
 ---
 
-## 🐳 Docker Deployment
-
-To run the entire stack with Docker Compose:
+## 💻 CLI Tool
+Manage your Knowledge Base directly from the terminal.
 
 ```bash
-docker-compose up --build
+# Search Docs
+python backend/cli.py search "authentication flow"
+
+# Generate Diagram
+python backend/cli.py diagram openapi.json --type sequence --path /login
+
+# Batch Ingest
+python backend/cli.py batch ./my-docs/
+
+# Interactive Session
+python backend/cli.py session create
+python backend/cli.py session chat <session_id>
 ```
-*   Frontend: `http://localhost:3000`
-*   Backend: `http://localhost:8000`
 
 ---
 
-## 🧪 CI/CD
-A GitHub Actions workflow (`.github/workflows/ci.yml`) is configured to:
-1.  Run static analysis on the Python backend.
-2.  Build the Next.js frontend to ensure no build errors.
+## 📊 Features in Detail
 
----
-
-## 📚 Usage Guide
-
-### Intelligent Context
-*   **Upload Docs**: Drag & Drop PDF/Word/JSON files to the sidebar.
-*   **Paste URLs**: The agent will scrape them for fresh context.
-*   **Web Search**: "Find the latest Stripe API docs..." will trigger a live web search.
-
-### Advanced Commands
-*   **"Generate an SDK..."**: Triggers the `Client` class generator with Pydantic models.
-*   **"Draw a diagram..."**: (or any complex plan) will auto-generate a generic Sequence Diagram.
+| Feature | Description | Status |
+| :--- | :--- | :--- |
+| **Hybrid Search** | Semantic + Keyword search with Reranking | ✅ v1.0 |
+| **Advanced Filtering** | Filter by metadata, source, date | ✅ v1.0 |
+| **Resilience** | Circuit Breakers, Retry logic, Fallbacks | ✅ v1.0 |
+| **Visualizations** | Mermaid Sequence & ER Diagrams | ✅ v1.0 |
+| **Multi-User** | Session isolation & history persistence | ✅ v1.0 |
+| **Parsing** | OpenAPI, GraphQL, Postman, PDF, Docx | ✅ v1.0 |
 
 ---
 
 ## 🤝 Contributing
-1.  Fork the repo
-2.  Create a feature branch
-3.  Submit a Pull Request
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests.
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.

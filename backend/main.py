@@ -38,7 +38,10 @@ configure_security(app)
 
 # Register Advanced API Router
 from api.endpoints import router as api_router
+from api.sessions import router as session_router
+
 app.include_router(api_router)
+app.include_router(session_router)
 
 class ChatRequest(BaseModel):
     query: str
