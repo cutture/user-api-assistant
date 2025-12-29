@@ -45,7 +45,7 @@ class HybridRetriever:
         # "Hello, world!" -> ["hello", "world"]
         return re.findall(r'\w+', text.lower())
 
-    def search(self, query: str, n_results: int = 3, fusion_weight: float = 0.5) -> Dict[str, Any]:
+    def search(self, query: str, n_results: int = 3, fusion_weight: float = 0.5, filters: Dict[str, str] = None) -> Dict[str, Any]:
         """
         Performs Hybrid Search using Reciprocal Rank Fusion (RRF).
         Enriched with Caching and Query Expansion.
@@ -54,12 +54,25 @@ class HybridRetriever:
         from core.expansion import expander
         from core.filtering import filter_manager
         
-        # 0. Parse Filters
-        clean_query, filters = filter_manager.parse_query(query)
+        # 0. Parse Filters from Query
+        clean_query, parsed_filters = filter_manager.parse_query(query)
+        
+        # Merge Explicit Filters (CLI/API) with Parsed Filters
+        combined_filters = {}
+        if parsed_filters:
+            combined_filters.update(parsed_filters)
         if filters:
-            print(f"🔎 Filters Detected: {filters} | Clean Query: '{clean_query}'")
+            combined_filters.update(filters)
+            
+        if combined_filters:
+            print(f"🔎 Filters: {combined_filters} | Clean Query: '{clean_query}'")
             # Update query to clean version for search
             query = clean_query
+            
+            # Use combined filters
+            filters = combined_filters
+        else:
+            filters = None
         
         # 1. Check Cache
         # Cache key should include filters to avoid incorrect hits

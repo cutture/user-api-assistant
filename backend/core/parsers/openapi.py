@@ -16,11 +16,17 @@ class OpenAPIParser(BaseParser):
     def parse(self, content: Union[str, Dict[str, Any]], **kwargs) -> List[str]:
         # Ensure dict
         if isinstance(content, str):
+            # Try JSON first
             try:
                 spec = json.loads(content)
             except json.JSONDecodeError:
-                # Fallback or error? For now assume valid JSON if this parser is chosen
-                return [content] 
+                # Try YAML
+                try:
+                    import yaml
+                    spec = yaml.safe_load(content)
+                except Exception:
+                     # Fallback
+                     return [content] 
         else:
             spec = content
 

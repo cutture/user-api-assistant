@@ -60,6 +60,10 @@ async def app_exception_handler(request, exc: AppError):
         content={"error": exc.message, "details": exc.details, "type": exc.__class__.__name__},
     )
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "Enterprise API Assistant", "version": "1.0.0"}
+
 @app.get("/health")
 @limiter.limit("5/minute") # Strict limit on health check to prevent spam
 async def health_check(request: Request):

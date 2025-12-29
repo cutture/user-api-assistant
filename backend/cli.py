@@ -223,7 +223,7 @@ def batch(directory: Path):
             mime_type = "text/plain"
             if file_path.suffix == ".json": mime_type = "application/json"
             elif file_path.suffix == ".graphql": mime_type = "application/graphql"
-            # Add more...
+            elif file_path.suffix in [".yaml", ".yml"]: mime_type = "application/yaml"
             
             parser = parser_factory.get_parser(mime_type)
             if not parser and file_path.suffix not in [".txt", ".md"]:
@@ -289,11 +289,19 @@ def diagram(
         from core.diagrams.generator import mermaid_generator
 
     import json
+    import yaml
+    
+    content = file_path.read_text(encoding="utf-8")
     try:
-        spec = json.loads(file_path.read_text(encoding="utf-8"))
-    except:
-        print(colored("❌ Invalid JSON file. Only OpenAPI JSON is supported currently.", "red"))
-        raise typer.Exit(code=1)
+        # Try JSON
+        spec = json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            # Try YAML
+            spec = yaml.safe_load(content)
+        except Exception:
+            print(colored("❌ Invalid file. Must be valid JSON or YAML OpenAPI spec.", "red"))
+            raise typer.Exit(code=1)
 
     diagram_code = ""
     print(colored(f"🎨 Generating {type} diagram...", "cyan"))
